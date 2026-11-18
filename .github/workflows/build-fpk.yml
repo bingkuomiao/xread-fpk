@@ -1,0 +1,253 @@
+name: Build FPK App
+
+# 自动 + 手动构建飞牛 fnOS .fpk 应用。
+#
+# 三大源码变动来源（任一变动即自动触发构建）：
+#   1) xread 前端  : bingkuomiao/xread 的 frontend/** 与 package.json
+#   2) xread 后端  : bingkuomiao/xread 的 src/** Cargo.toml 等（经 build-backend.yml
+#                    产出 backend-latest Release，本工作流用 --fetch-backend 拉取最新二进制）
+#   3) kindle 前端 : bingkuomiao/xread-kindle 的任意源文件
+#
+# 触发方式（当前【仅手动】，自动触发已注释，需要时打开 on 段对应注释即可恢复）：
+#   - workflow_dispatch  : 手动，可强制重建 / 指定版本 / 指定端口          ← 当前启用
+#   - schedule           : [已注释] 每小时轮询两个源仓库 HEAD，变动才构建
+#   - repository_dispatch: [已注释] 源仓库 push 后主动通知（见下方「实时触发」说明）
+#
+# 版本号变更：FPK 版本默认取 xread/frontend/package.json 的 version（单一来源），
+#   前端版本号一变，FPK 版本自动跟随；也可在手动触发时用 fpk_version 覆盖。
+#   后端 appVersion 由二进制自带（1.0.48），不由本工作流改写。
+#
+# 实时触发（可选）：若希望 push 后立即构建而非等每小时轮询，可在两个源仓库各加一个
+#   notify workflow，在目标路径 push 后调用：
+#     gh api repos/bingkuomiao/xread-fpk/dispatches -f event_type=source-changed \
+#        -f client_payload='{"source":"xread","sha":"${{ github.sha }}"}'
+#   需在源仓库配置一个有 contents:write 权限的 PAT（secret: FPK_DISPATCH_TOKEN）。
+#   不配置也不影响定时轮询自动构建。
+
+on:
+  # 【自动触发·暂时停用】需要恢复每小时定时轮询时，去掉下面两行的 # 注释即可。
+  # 注意：GitHub Actions 要求 on 下至少保留一个触发器，故 workflow_dispatch 不能注释。
+  # schedule:
+  #   - cron: '23 * * * *'   # 每小时第 23 分轮询
+  workflow_dispatch:
+    inputs:
+      fpk_version:
+        description: 'FPK 版本号（留空=自动取 xread 前端 package.json 版本）'
+        type: string
+        required: false
+        default: ''
+      port:
+        description: '服务端口'
+        type: string
+        required: false
+        default: '7777'
+      force:
+        description: '强制构建（忽略「无源码变动则跳过」）'
+        type: boolean
+        required: false
+        default: false
+  # 【实时通知·暂时停用】需要源仓库 push 后实时触发时，去掉下面两行的 # 注释。
+  # 详见文件头「实时触发」说明（需在源仓库配置 FPK_DISPATCH_TOKEN）。
+  # repository_dispatch:
+  #   types: [source-changed]
+
+permissions:
+  contents: write        # 回写 build-state.json
+  actions: read
+
+concurrency:
+  group: build-fpk
+  cancel-in-progress: false
+
+env:
+  XREAD_REPO: bingkuomiao/xread
+  KINDLE_REPO: bingkuomiao/xread-kindle
+  STATE_FILE: .github/build-state.json
+
+jobs:
+  build:
+    name: Build & publish FPK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      # ---------- 1. 检出打包工程 + 两个源码仓库 ----------
+      - name: Checkout 打包工程 (xread-fpk)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout xread 源码 (master)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.XREAD_REPO }}
+          ref: master
+          path: src/xread
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout xread-kindle 源码 (main)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.KINDLE_REPO }}
+          ref: main
+          path: src/xread-kindle
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # ---------- 1.5 预检回归测试（脚本语法/配置格式/版本一致性/patch 幂等/拉取安全）----------
+      - name: 预检回归测试
+        shell: bash
+        env:
+          XREAD_SRC: ${{ github.workspace }}/src/xread
+          KINDLE_SRC: ${{ github.workspace }}/src/xread-kindle
+        run: bash tests/run-tests.sh
+
+      # ---------- 2. 采集源码状态 + 决定版本 + 判断是否构建 ----------
+      - name: 采集源码状态并计算版本
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          XREAD_SHA="$(git -C src/xread rev-parse HEAD)"
+          KINDLE_SHA="$(git -C src/xread-kindle rev-parse HEAD)"
+          FE_VER="$(python3 -c "import json;print(json.load(open('src/xread/frontend/package.json'))['version'])")"
+
+          # FPK 版本：手动指定优先，否则跟随 xread 前端版本
+          INPUT_VER="${{ inputs.fpk_version }}"
+          if [ -n "$INPUT_VER" ]; then VERSION="$INPUT_VER"; else VERSION="$FE_VER"; fi
+          PORT="${{ inputs.port }}"; [ -n "$PORT" ] || PORT=7777
+
+          # 读取上次成功构建的 state
+          PREV_XREAD=""; PREV_KINDLE=""; PREV_VER=""
+          if [ -f "$STATE_FILE" ]; then
+            PREV_XREAD="$(python3 -c "import json;print(json.load(open('$STATE_FILE')).get('xread_sha',''))")"
+            PREV_KINDLE="$(python3 -c "import json;print(json.load(open('$STATE_FILE')).get('kindle_sha',''))")"
+            PREV_VER="$(python3 -c "import json;print(json.load(open('$STATE_FILE')).get('fpk_version',''))")"
+          fi
+
+          # 是否需要构建：强制 / 前端或 kindle HEAD 变动 / 版本号变动
+          NEED=0
+          if [ "${{ inputs.force }}" = "true" ]; then NEED=1
+          elif [ "$XREAD_SHA" != "$PREV_XREAD" ] || [ "$KINDLE_SHA" != "$PREV_KINDLE" ] || [ "$VERSION" != "$PREV_VER" ]; then NEED=1
+          fi
+
+          echo "xread_sha=$XREAD_SHA"        | tee -a "$GITHUB_OUTPUT"
+          echo "kindle_sha=$KINDLE_SHA"      | tee -a "$GITHUB_OUTPUT"
+          echo "fe_version=$FE_VER"          | tee -a "$GITHUB_OUTPUT"
+          echo "fpk_version=$VERSION"        | tee -a "$GITHUB_OUTPUT"
+          echo "port=$PORT"                  | tee -a "$GITHUB_OUTPUT"
+          echo "need_build=$NEED"            | tee -a "$GITHUB_OUTPUT"
+          {
+            echo "### 源码状态"
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| FPK 版本 | \`$VERSION\` |"
+            echo "| xread 前端版本 | \`$FE_VER\` |"
+            echo "| xread HEAD | \`${XREAD_SHA:0:12}\` |"
+            echo "| xread-kindle HEAD | \`${KINDLE_SHA:0:12}\` |"
+            echo "| 端口 | \`$PORT\` |"
+            echo "| 需要构建 | $([ "$NEED" = 1 ] && echo 是 || echo 否（无变动跳过）) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------- 3. 拉最新后端二进制（backend-latest Release）----------
+      - name: 拉取最新后端二进制
+        if: steps.meta.outputs.need_build == '1'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash tools/fetch-backend.sh
+
+      # ---------- 4. 构建 FPK ----------
+      # 后端已在步骤 3 拉取到 backend/，这里不再传 --fetch-backend，避免重复下载 45MB。
+      - name: 构建 FPK
+        if: steps.meta.outputs.need_build == '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          XREAD_SRC="$PWD/src/xread" KINDLE_SRC="$PWD/src/xread-kindle" \
+          XREAD_VERSION="${{ steps.meta.outputs.fpk_version }}" \
+          XREAD_PORT="${{ steps.meta.outputs.port }}" \
+          XREAD_OUT="$PWD/dist" \
+            bash build.sh
+
+      # ---------- 5. 上传产物 ----------
+      - name: 上传 FPK 产物 (artifact)
+        if: steps.meta.outputs.need_build == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: xread-native-${{ steps.meta.outputs.fpk_version }}
+          path: dist/*.fpk
+          if-no-files-found: error
+          retention-days: 90
+
+      # ---------- 6. 回写 state（仅成功构建后）----------
+      - name: 回写构建状态
+        if: steps.meta.outputs.need_build == '1'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - "$STATE_FILE" <<'PY'
+          import json, sys, datetime
+          path = sys.argv[1]
+          data = {
+            "xread_sha": "${{ steps.meta.outputs.xread_sha }}",
+            "kindle_sha": "${{ steps.meta.outputs.kindle_sha }}",
+            "fpk_version": "${{ steps.meta.outputs.fpk_version }}",
+            "fe_version": "${{ steps.meta.outputs.fe_version }}",
+            "built_at": datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+          }
+          with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write('\n')
+          print('state 已更新:', json.dumps(data, ensure_ascii=False))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$STATE_FILE"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(ci): 记录 FPK 构建状态 v${{ steps.meta.outputs.fpk_version }}"
+            git push
+          else
+            echo "state 无变化，跳过提交"
+          fi
+
+      # ---------- 7. 发布到 Release（可选，用 tag 归档）----------
+      - name: 发布 FPK 到 Release
+        if: steps.meta.outputs.need_build == '1'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.fpk_version }}
+        run: |
+          set -euo pipefail
+          TAG="fpk-v$VERSION"
+          FPK="$(find dist -maxdepth 1 -name '*.fpk' -type f | head -n1)"
+          [ -n "$FPK" ] || { echo "找不到 FPK 产物"; exit 1; }
+          NOTES="$(mktemp)"
+          cat > "$NOTES" <<EOF
+          ## XRead FPK $VERSION
+
+          由 xread（Rust 后端 + Vue3 前端）与 xread-kindle（Kindle 静态前端）最新产物自动构建。
+
+          - FPK 版本 / 前端版本: $VERSION
+          - 后端 appVersion: 1.0.48（backend-latest Release 静态二进制）
+          - Kindle frontVersion: 随 xread-kindle 源码
+          - 三端访问: 手机/PC \`/\`、Kindle \`/xread/\`（同源 API）
+
+          安装：下载 \`.fpk\` 并在飞牛 fnOS 应用中心离线安装。
+          EOF
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FPK" --clobber
+            gh release edit "$TAG" --title "XRead FPK $VERSION" --notes-file "$NOTES"
+          else
+            gh release create "$TAG" "$FPK" --title "XRead FPK $VERSION" --notes-file "$NOTES"
+          fi
+          echo "已发布: $TAG"

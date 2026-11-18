@@ -74,6 +74,11 @@ xread-fpk/
 │   ├── fnpack                # fnOS 打包器 1.2.3
 │   ├── patch_dist.py         # 产物层注入运行时配置（不改前端源码）
 │   └── fetch-backend.sh      # 从 xread 的 backend-latest Release 拉最新后端二进制
+├── .github/
+│   ├── workflows/build-fpk.yml  # 构建 FPK 的工作流（当前仅手动触发，自动触发已注释）
+│   └── build-state.json         # 上次成功构建的源码状态（CI 自动回写，避免空转）
+├── tests/
+│   └── run-tests.sh             # 轻量回归测试（语法/配置/版本/幂等/拉取安全，离线可跑）
 ├── frontend-dist/            # 【生成，不入库】Vue3 前端编译产物（可缓存复用）
 ├── dist/                     # 【生成，不入库】最终 .fpk 产物
 ├── README.md                 # 本文档：应用说明 + 打包工程手册
@@ -170,19 +175,90 @@ SKIP_FE=1 ./build.sh
 
 `xread/.github/workflows/build-backend.yml`：
 
-- **触发**：`src/**`、`Cargo.toml`、`Cargo.lock`、`.cargo/**` 等后端路径变更，或手动 `workflow_dispatch`
+- **触发**：`src/**`、`tests/**`、`Cargo.toml`、`Cargo.lock`、`.cargo/**`、`build.rs`、工作流自身变更，或手动 `workflow_dispatch`
 - **编译**：矩阵双架构 `x86_64-unknown-linux-musl` / `aarch64-unknown-linux-musl`，用 `cross`
 - **校验**：`file` 检查 64 位 ELF + 架构 + 静态链接，生成 `SHA256SUMS`
 - **发布**：滚动 Release `backend-latest`，`gh release upload --clobber` 覆盖同名资产
 
 ---
 
-## 10. 相关文档
+## 10. 自动 / 手动构建工作流（本仓库）
+
+`.github/workflows/build-fpk.yml` 负责在本仓库手动或自动构建 FPK。**当前默认仅手动触发**（自动触发逻辑已注释，需要时打开注释即可恢复）。
+
+### 触发方式
+
+| 方式 | 当前状态 | 说明 |
+|---|---|---|
+| `workflow_dispatch`（手动） | ✅ 启用 | 可指定 `fpk_version`（留空则跟随前端版本）、`port`、勾选 `force` 强制重建 |
+| `schedule`（每小时） | 🔒 已注释 | 轮询 `xread` / `xread-kindle` 的 HEAD，任一变动或版本号变动才构建；无变动跳过。需要时打开 `on:` 段 `schedule` 两行注释 |
+| `repository_dispatch` | 🔒 已注释 | 预留给源仓库主动通知；打开注释并按「实时触发」配置 PAT 后可用 |
+
+> **启用自动构建**：编辑 `build-fpk.yml`，去掉 `on:` 段中 `# schedule:` 与 `# - cron:` 两行的注释即可；`workflow_dispatch` 必须保留（GitHub 要求 `on` 下至少有一个触发器）。
+
+> 后端二进制由本工作流用 `--fetch-backend` 从 `backend-latest` Release 拉最新；xread 后端代码变动会先触发
+> xread 仓库的 `build-backend.yml` 更新 Release，本工作流下一次运行时取到新二进制并重新打包。
+
+### 版本号处理（关键）
+
+- **FPK 版本 = `xread/frontend/package.json` 的 version**（单一来源）。前端版本号一改，下次构建
+  FPK 版本自动跟随，产物名、`manifest.version`、设置页版本号同步更新。
+- 手动触发可用 `fpk_version` 覆盖（仍须与前端 `package.json` 一致，否则 build.sh 校验拦截）。
+- **后端 `appVersion` = 1.0.48**，由二进制自带，工作流不改写。
+- **Kindle `frontVersion`** 随 `xread-kindle` 源码（`index.html` 的 `__XREAD_CONFIG__`）。
+
+四类版本号对照见第 2 节。
+
+### 首次启用检查
+
+1. 确认 `Settings → Actions → General → Workflow permissions` 为 **Read and write**（回写 state / 发 Release 需要）。
+2. 手动跑一次 `Run workflow` 验证；产物在 artifact 与 `fpk-v<版本>` Release。
+3. `.github/build-state.json` 记录上次成功构建的源码 SHA，每次成功后自动回写。
+
+### 实时触发（可选）
+
+默认的每小时轮询已够用。若要 push 后立即构建，在两个源仓库各加一个 notify workflow，在目标路径
+push 后调用本仓库的 dispatch API：
+
+```bash
+gh api repos/bingkuomiao/xread-fpk/dispatches \
+  -f event_type=source-changed \
+  -f client_payload='{"source":"xread","sha":"${{ github.sha }}"}'
+```
+
+需在源仓库配置一个有 `contents:write` 权限的 PAT（secret 名 `FPK_DISPATCH_TOKEN`）。不配置不影响定时轮询。
+
+---
+
+## 11. 回归测试
+
+`tests/run-tests.sh` 是一套**轻量、离线、无第三方框架**的回归测试，覆盖打包工程里最容易回归、且可本地确定的关键逻辑。构建工作流的「预检回归测试」步骤会在每次构建前自动运行它；也可本地手动跑：
+
+```bash
+bash tests/run-tests.sh
+# CI/自定义源码路径：
+XREAD_SRC=/path/to/xread KINDLE_SRC=/path/to/xread-kindle bash tests/run-tests.sh
+```
+
+| 用例 | 检查内容 |
+|---|---|
+| T1 脚本语法 | `build.sh` / `fetch-backend.sh` 的 bash 语法、`patch_dist.py` 的 Python 语法 |
+| T2 配置格式 | `manifest` 键值格式、`wizard/*.json`、`build-state.json` 可解析 |
+| T3 版本一致性 | FPK / 前端 / Kindle / state 版本对齐（1.0.48.69）+ 后端 1.0.48 |
+| T4 工作流有效性 | `build-fpk.yml` YAML 解析、仅手动触发、内嵌 shell 语法、自动触发已注释 |
+| T5 patch_dist 幂等 | 首次注入 2 处、重复运行 0 处，且不误伤 `concurrentCount:24` |
+| T6 后端拉取安全 | 本地模拟 Release：正常资产落地且 SHA 一致；篡改资产校验失败、拒绝替换目标目录 |
+
+T6 用本地 HTTP 服务器模拟 GitHub Release，不依赖外网。退出码：全通过为 0，任一失败为 1。
+
+---
+
+## 12. 相关文档
 
 - [KINDLE.md](KINDLE.md) — Kindle 静态前端的访问方式、部署原理与更新方法
 - [验证报告.md](验证报告.md) — 本地端到端构建与验证记录
 - [xread](https://github.com/bingkuomiao/xread) / [xread-kindle](https://github.com/bingkuomiao/xread-kindle) — 两大源码基线
 
-## 11. 状态
+## 13. 状态
 
-已推送到 [bingkuomiao/xread-fpk](https://github.com/bingkuomiao/xread-fpk)（`main` 分支）。
+已推送到 [bingkuomiao/xread-fpk](https://github.com/bingkuomiao/xread-fpk)（`main` 分支），含自动/手动构建工作流。

@@ -42,7 +42,7 @@ on:
         required: false
         default: '7777'
       force:
-        description: '强制构建（忽略「无源码变动则跳过」）'
+        description: '强制重建（手动触发已默认强制构建，此项通常无需勾选）'
         type: boolean
         required: false
         default: false
@@ -129,9 +129,12 @@ jobs:
             PREV_VER="$(python3 -c "import json;print(json.load(open('$STATE_FILE')).get('fpk_version',''))")"
           fi
 
-          # 是否需要构建：强制 / 前端或 kindle HEAD 变动 / 版本号变动
+          # 是否需要构建：
+          #   - 手动触发（workflow_dispatch）：默认强制构建——用户点了运行就是要出包
+          #   - 定时/通知触发：仅源码 SHA 或版本号变动才构建，避免无变动空转
           NEED=0
-          if [ "${{ inputs.force }}" = "true" ]; then NEED=1
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then NEED=1
+          elif [ "${{ inputs.force }}" = "true" ]; then NEED=1
           elif [ "$XREAD_SHA" != "$PREV_XREAD" ] || [ "$KINDLE_SHA" != "$PREV_KINDLE" ] || [ "$VERSION" != "$PREV_VER" ]; then NEED=1
           fi
 

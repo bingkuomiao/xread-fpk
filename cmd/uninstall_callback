@@ -1,0 +1,4 @@
+#!/bin/bash
+### 卸载后回调：用户数据保留在 /var/apps/xread/var/data
+
+exit 0

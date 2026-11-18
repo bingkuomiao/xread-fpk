@@ -1,0 +1,99 @@
+[
+  {
+    "stepTitle": "访问与安全",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "修改后需在本应用详情页点一次「重启」才会生效。配置保存在应用配置目录，升级覆盖安装不会丢失。"
+      },
+      {
+        "type": "select",
+        "field": "wizard_secure",
+        "label": "多用户鉴权 (SECURE)",
+        "initValue": "true",
+        "options": [
+          { "label": "开启（推荐，需登录）", "value": "true" },
+          { "label": "关闭（单用户免登录）", "value": "false" }
+        ]
+      },
+      {
+        "type": "select",
+        "field": "wizard_public_read",
+        "label": "公开只读模式 (PUBLIC_READ)",
+        "initValue": "false",
+        "options": [
+          { "label": "关闭（全私有）", "value": "false" },
+          { "label": "开启（游客可只读）", "value": "true" }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_invite_code",
+        "label": "注册邀请码（留空则开放注册）",
+        "initValue": "",
+        "rules": [
+          { "pattern": "^[A-Za-z0-9_-]*$", "message": "仅允许字母、数字、下划线和连字符" }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_user_limit",
+        "label": "最大注册用户数",
+        "initValue": "5",
+        "rules": [
+          { "required": true, "message": "请填写用户数上限" },
+          { "pattern": "^[0-9]+$", "message": "只能填写数字" }
+        ]
+      }
+    ]
+  },
+  {
+    "stepTitle": "运行参数",
+    "items": [
+      {
+        "type": "select",
+        "field": "wizard_log_level",
+        "label": "日志级别 (LOG_LEVEL)",
+        "initValue": "info",
+        "options": [
+          { "label": "info（推荐）", "value": "info" },
+          { "label": "debug（排障用）", "value": "debug" },
+          { "label": "warn", "value": "warn" },
+          { "label": "error", "value": "error" }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_timeout",
+        "label": "出站请求超时（秒）",
+        "initValue": "30",
+        "rules": [
+          { "required": true, "message": "请填写超时秒数" },
+          { "pattern": "^[0-9]+$", "message": "只能填写数字" }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_cache_concurrency",
+        "label": "批量缓存并发数",
+        "initValue": "4",
+        "rules": [
+          { "required": true, "message": "请填写批量缓存并发数" },
+          { "pattern": "^([1-9]|[12][0-9]|3[0-2])$", "message": "只能填 1-32 的整数，默认 4" }
+        ],
+        "helpText": "「缓存全本 / 批量缓存」时同时抓取的章节数，默认 4。ARM 等性能较弱设备建议保持 4；调大可加快缓存但 CPU 占用与被封风险更高；改动后需重启应用生效。"
+      },
+      {
+        "type": "text",
+        "field": "wizard_test_source_timeout",
+        "label": "书源测试单请求超时（秒）",
+        "initValue": "120",
+        "rules": [
+          { "required": true, "message": "请填写超时秒数" },
+          { "pattern": "^([1-9]|[1-9][0-9]|1[01][0-9]|120)$", "message": "只能填 1-120 的整数，默认 120" }
+        ],
+        "helpText": "书源管理页「测试书源」时每个批次请求的超时秒数，默认 120 秒、最大 120 秒。书源站点较慢可适当调大；改动后需重启应用生效。"
+      }
+    ]
+  }
+]

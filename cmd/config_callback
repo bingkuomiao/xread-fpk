@@ -1,0 +1,4 @@
+#!/bin/bash
+# 配置向导提交后重写配置；改动在应用重启后生效
+. "$(cd "$(dirname "$0")" && pwd)/_write_env.sh" || exit 0
+exit 0

@@ -1,0 +1,4 @@
+#!/bin/bash
+# 升级后：保留向导配置，数据在 TRIM_PKGVAR/data 不受影响
+. "$(cd "$(dirname "$0")" && pwd)/_write_env.sh" || exit 0
+exit 0

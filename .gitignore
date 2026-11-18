@@ -1,0 +1,8 @@
+# 构建生成物，不入库
+frontend-dist/
+dist/
+*.fpk
+
+# 系统/编辑器
+.DS_Store
+*.swp

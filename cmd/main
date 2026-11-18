@@ -1,0 +1,173 @@
+#!/bin/bash
+# XRead 原生版 —— 生命周期主控（不依赖 Docker）
+# start/stop/status 由应用中心调用；数据落在 TRIM_PKGVAR，配置落在 TRIM_PKGETC。
+
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
+APPNAME="xread"
+SERVICE_PORT="7777"
+APPDEST="${TRIM_APPDEST:-/var/apps/${APPNAME}/target}"
+PKGVAR="${TRIM_PKGVAR:-/var/apps/${APPNAME}/var}"
+PKGETC="${TRIM_PKGETC:-/var/apps/${APPNAME}/etc}"
+DATA_DIR="${PKGVAR}/data"
+PID_FILE="${PKGVAR}/xread.pid"
+LOG_FILE="${PKGVAR}/xread.log"
+ENV_FILE="${PKGETC}/xread.env"
+WEB_ROOT="${APPDEST}/web/dist"
+
+case "$(uname -m)" in
+    x86_64|amd64)   ARCH="amd64" ;;
+    aarch64|arm64)  ARCH="arm64" ;;
+    *) echo "不支持的 CPU 架构: $(uname -m)" >&2; exit 1 ;;
+esac
+
+BIN="${APPDEST}/bin/xread-${ARCH}"
+LIBDIR="${APPDEST}/lib/${ARCH}"
+# 仅当二进制为动态链接 musl 时，extract 脚本才会生成该目录
+[ -d "$LIBDIR" ] && export LD_LIBRARY_PATH="${LIBDIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
+# 默认值；随后用落盘配置覆盖（安装/配置向导写入）
+LOG_LEVEL="info"
+SECURE="true"
+PUBLIC_READ="false"
+INVITE_CODE=""
+USER_LIMIT="5"
+REQUEST_TIMEOUT_SECS="30"
+# 批量缓存并发数：安装向导可配，默认 4，合法范围 1-32
+CACHE_CONCURRENCY="4"
+# 书源测试单请求超时（秒）：安装向导可配，默认 120，合法范围 1-120
+TEST_SOURCE_TIMEOUT_SECS="120"
+if [ -f "$ENV_FILE" ]; then
+    . "$ENV_FILE"
+fi
+# 配置向导提交后，飞牛也会把 wizard_* 直接注入生命周期脚本，优先采用
+[ -n "${wizard_log_level:-}" ]       && LOG_LEVEL="$wizard_log_level"
+[ -n "${wizard_secure:-}" ]          && SECURE="$wizard_secure"
+[ -n "${wizard_public_read:-}" ]     && PUBLIC_READ="$wizard_public_read"
+[ -n "${wizard_invite_code:-}" ]     && INVITE_CODE="$wizard_invite_code"
+[ -n "${wizard_user_limit:-}" ]      && USER_LIMIT="$wizard_user_limit"
+[ -n "${wizard_timeout:-}" ]         && REQUEST_TIMEOUT_SECS="$wizard_timeout"
+[ -n "${wizard_cache_concurrency:-}" ] && CACHE_CONCURRENCY="$wizard_cache_concurrency"
+[ -n "${wizard_test_source_timeout:-}" ] && TEST_SOURCE_TIMEOUT_SECS="$wizard_test_source_timeout"
+
+# 把向导里的「批量缓存并发数」「书源测试单请求超时」注入前端 index.html
+# 的内联运行时配置（window.__XREAD_CONFIG__）。
+# 导航请求在 Service Worker 中是 network-first，因此每次刷新都能拿到最新值。
+# 若 app 目录只读导致写入失败，保留内联默认值（缓存并发 4 / 超时 120s），不影响启动。
+inject_runtime_config() {
+    local idx="$WEB_ROOT/index.html"
+    [ -f "$idx" ] || return 0
+    local tmp="${PKGVAR}/index.html.tmp.$$"
+    if ! sed -E \
+        -e 's/("cacheConcurrency"[[:space:]]*:[[:space:]]*)[0-9]+/\1'"$CACHE_CONCURRENCY"'/g' \
+        -e 's/("testSourceTimeout"[[:space:]]*:[[:space:]]*)[0-9]+/\1'"$TEST_SOURCE_TIMEOUT_SECS"'/g' \
+        "$idx" > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        return 0
+    fi
+    if cat "$tmp" > "$idx" 2>/dev/null; then
+        echo "[$(date '+%F %T')] 运行时配置已注入前端: cacheConcurrency=$CACHE_CONCURRENCY, testSourceTimeout=$TEST_SOURCE_TIMEOUT_SECS" >> "$LOG_FILE"
+    else
+        echo "[$(date '+%F %T')] 警告: 无法写入 $idx，前端保持内联默认配置" >> "$LOG_FILE"
+    fi
+    rm -f "$tmp"
+}
+
+port_open() {
+    (exec 3<>"/dev/tcp/127.0.0.1/${SERVICE_PORT}") 2>/dev/null
+}
+
+is_running() {
+    [ -f "$PID_FILE" ] || return 1
+    local pid
+    pid=$(cat "$PID_FILE" 2>/dev/null)
+    [ -n "$pid" ] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+    # 防止 PID 被其它进程复用：核对命令行中的二进制名
+    if [ -r "/proc/${pid}/cmdline" ]; then
+        grep -aq "xread-${ARCH}" "/proc/${pid}/cmdline" 2>/dev/null || return 1
+    fi
+    return 0
+}
+
+do_start() {
+    [ -x "$BIN" ] || { echo "缺少可执行文件: $BIN" >&2; exit 1; }
+    if is_running; then exit 0; fi
+
+    mkdir -p "$DATA_DIR/assets" "$PKGVAR"
+    # 日志超过 10MB 轮转一次，避免长期运行无限增长
+    if [ -f "$LOG_FILE" ] && [ "$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)" -gt 10485760 ]; then
+        mv -f "$LOG_FILE" "${LOG_FILE}.1" 2>/dev/null || true
+    fi
+    export TZ="Asia/Shanghai"
+    export SERVER_HOST="0.0.0.0"
+    export SERVER_PORT="$SERVICE_PORT"
+    export DATABASE_URL="sqlite:${DATA_DIR}/reader.db?mode=rwc"
+    export STORAGE_DIR="$DATA_DIR"
+    export ASSETS_DIR="$DATA_DIR/assets"
+    export WEB_ROOT="$WEB_ROOT"
+    export LOG_LEVEL="$LOG_LEVEL"
+    export SECURE="$SECURE"
+    export PUBLIC_READ="$PUBLIC_READ"
+    export INVITE_CODE="$INVITE_CODE"
+    export USER_LIMIT="$USER_LIMIT"
+    export REQUEST_TIMEOUT_SECS="$REQUEST_TIMEOUT_SECS"
+
+    # 校验批量缓存并发数（1-32），非法值回退 4
+    case "$CACHE_CONCURRENCY" in
+        ''|*[!0-9]*) CACHE_CONCURRENCY="4" ;;
+    esac
+    if [ "$CACHE_CONCURRENCY" -lt 1 ] || [ "$CACHE_CONCURRENCY" -gt 32 ]; then
+        CACHE_CONCURRENCY="4"
+    fi
+    # 校验书源测试单请求超时（1-120），非法值回退 120
+    case "$TEST_SOURCE_TIMEOUT_SECS" in
+        ''|*[!0-9]*) TEST_SOURCE_TIMEOUT_SECS="120" ;;
+    esac
+    if [ "$TEST_SOURCE_TIMEOUT_SECS" -lt 1 ] || [ "$TEST_SOURCE_TIMEOUT_SECS" -gt 120 ]; then
+        TEST_SOURCE_TIMEOUT_SECS="120"
+    fi
+    inject_runtime_config
+
+    cd "$APPDEST" || exit 1
+    if command -v setsid >/dev/null 2>&1; then
+        setsid "$BIN" >> "$LOG_FILE" 2>&1 < /dev/null &
+    else
+        nohup "$BIN" >> "$LOG_FILE" 2>&1 < /dev/null &
+    fi
+    echo $! > "$PID_FILE"
+
+    for ((i = 0; i < 25; i++)); do
+        if port_open; then exit 0; fi
+        sleep 1
+    done
+    echo "启动超时，日志: $LOG_FILE" >&2
+    exit 1
+}
+
+do_stop() {
+    [ -f "$PID_FILE" ] || exit 0
+    local pid
+    pid=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null
+        for ((i = 0; i < 10; i++)); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -KILL "$pid" 2>/dev/null
+        fi
+    fi
+    rm -f "$PID_FILE"
+    exit 0
+}
+
+case "${1:-}" in
+    start)  do_start ;;
+    stop)   do_stop ;;
+    status)
+        if is_running || port_open; then exit 0; else exit 3; fi
+        ;;
+    *) exit 1 ;;
+esac

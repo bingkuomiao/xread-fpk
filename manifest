@@ -1,0 +1,17 @@
+appname                    = xread
+version                    = 1.0.48.69
+display_name               = 阅读
+desc                       = 阅读（英文名 XRead）是自托管阅读应用（Rust + Vue 3），离线安装、无需 Docker。兼容 Legado 书源，支持多用户隔离、TXT/EPUB 导入、AI 助读与音视频流代理；内置 XRead-kindle 静态前端，Kindle 老浏览器经 /xread/ 同源访问，手机/PC 与 Kindle 三端共用一套服务。
+platform                   = all
+source                     = thirdparty
+maintainer                 = Charmillionaire
+maintainer_url             = https://github.com/Charmillionaire/xread
+distributor                = bingkuomiao
+distributor_url            = https://github.com/bingkuomiao/xread-fpk
+service_port               = 7777
+checkport                  = true
+ctl_stop                   = true
+desktop_uidir              = ui
+desktop_applaunchname      = xread.Application
+disable_authorization_path = true
+changelog                  = v1.0.48.69：由 xread（Rust 后端 + Vue3 前端）与 xread-kindle（Kindle 静态前端）两大源码基线的最新产物统一打包。新增/强化 Kindle 支持——内置兼容 /reader3 API 的静态前端，Kindle 老浏览器经 http://NAS:7777/xread/ 同源访问、免 CORS，与手机/PC 三端共用一套服务。后端二进制为已验证静态构建（appVersion 1.0.48），前端版本 1.0.48.69，向导可配置批量缓存并发与书源测试超时（默认 120s）。

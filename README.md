@@ -35,12 +35,12 @@
 
 | 项 | 值 | 说明 |
 |---|---|---|
-| **FPK 应用版本 / `manifest.version`** | **1.0.48.69** | 安装包版本，同时是产物文件名 |
-| 前端版本（设置页显示） | 1.0.48.69 | 来自 `xread/frontend/package.json` |
+| **FPK 应用版本 / `manifest.version`** | **1.0.48.93** | 安装包版本，同时是产物文件名 |
+| 前端版本（设置页显示） | 1.0.48.93 | 来自 `xread/frontend/package.json` |
 | 后端 `appVersion` | 1.0.48 | 固定，后端二进制不随前端改动 |
-| Kindle 前端 `frontVersion` | 1.0.48.69 | 写入 `appVersion` / `frontVersion` 运行配置 |
+| Kindle 前端 `frontVersion` | 1.0.48.93 | 写入 `appVersion` / `frontVersion` 运行配置 |
 
-打包时 `XREAD_VERSION` 应与前端版本一致（默认已是 `1.0.48.69`）。
+打包时 `XREAD_VERSION` 应与前端版本一致（默认已是 `1.0.48.93`）。
 
 ---
 
@@ -116,9 +116,24 @@ XREAD_SRC=/path/to/xread KINDLE_SRC=/path/to/xread-kindle XREAD_OUT=/tmp/out ./b
 
 # 调试：跳过前端编译，复用上次 frontend-dist/
 SKIP_FE=1 ./build.sh
+
+# 调试：只打 FPK，跳过 WSL2 包
+SKIP_WSL2=1 ./build.sh
 ```
 
-产物：`dist/xread-native-<版本>.fpk`。
+**产物（每次构建默认同时产出两个同源包，二进制/前端完全一致）：**
+
+| 产物 | 用途 |
+| --- | --- |
+| `dist/xread-native-<版本>.fpk` | 飞牛 fnOS 原生安装包 |
+| `dist/xread-wsl2-<版本>.tar.gz` | Win10 + WSL2 开箱即用部署包 |
+
+> **双包约定（长期）**：后续每次新版本更新，都必须同时给出 `.fpk` 与 wsl2 `.tar.gz` 两个包。
+> WSL2 包由 `scripts/build-wsl2-package.sh` 生成，主 `build.sh` 在 FPK 完成后自动调用，
+> 复用同一批 `backend/` 二进制与 `frontend-dist/` 前端，保证两包同源。
+> WSL2 部署/测试文档见 [docs/wsl2/](docs/wsl2/README.md)（deploy / testing / build-package /
+> xread-wsl2-lan.ps1）。使用：解压后 `./start.sh -d` 启动，Windows 管理员 PowerShell 跑
+> `xread-wsl2-lan.ps1` 配转发，Kindle 访问 `http://192.168.137.1:7777/xread`。
 
 ---
 

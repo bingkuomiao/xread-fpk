@@ -15,21 +15,26 @@
 #   ./build.sh --fetch-backend          # 打包前从 backend-latest Release 拉最新后端二进制
 #   ./build.sh --pull                   # 打包前对两个源码仓库执行 git pull 更新
 #   ./build.sh --pull --fetch-backend   # 前端源码 + 后端二进制都拉最新
-#   XREAD_VERSION=1.0.48.70 ./build.sh  # 指定版本（写入 manifest / 前端版本号检查 / 文件名）
+#   XREAD_VERSION=1.0.48.93 ./build.sh  # 指定版本（写入 manifest / 前端版本号检查 / 文件名）
 #   XREAD_PORT=7778 ./build.sh          # 指定服务端口
 #   XREAD_OUT=/path ./build.sh          # 指定产物输出目录
 #
 # 相关环境变量：
 #   XREAD_SRC   xread 仓库本地路径        （默认 ../xread）
-#   KINDLE_SRC  xread-kindle 本地路径     （默认 ../kabi-reader）
+#   KINDLE_SRC  xread-kindle 本地路径     （默认 ../xread-kindle）
 #   SKIP_FE=1   跳过前端编译，复用上次 frontend-dist/ （调试用）
+#   SKIP_WSL2=1 跳过 WSL2 包（默认与 FPK 同时产出）
 #   GITHUB_TOKEN  拉取后端时传递（可选，避免 API 限流/私有仓）
+#
+# 出包约定：每次构建默认同时产出两个同源包（二进制/前端完全一致）：
+#   dist/xread-native-<版本>.fpk      —— 飞牛 fnOS 原生安装包
+#   dist/xread-wsl2-<版本>.tar.gz     —— Win10 + WSL2 开箱即用部署包
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 XREAD_SRC="${XREAD_SRC:-$ROOT/../xread}"
-KINDLE_SRC="${KINDLE_SRC:-$ROOT/../kabi-reader}"
-VERSION="${XREAD_VERSION:-1.0.48.69}"
+KINDLE_SRC="${KINDLE_SRC:-$ROOT/../xread-kindle}"
+VERSION="${XREAD_VERSION:-1.0.48.93}"
 PORT="${XREAD_PORT:-7777}"
 OUT_DIR="${XREAD_OUT:-$ROOT/dist}"
 FNPACK="$ROOT/tools/fnpack"
@@ -131,7 +136,8 @@ mkdir -p "$STAGE/app/kindle"
 cp -a "$KINDLE_SRC/." "$STAGE/app/kindle/"
 # 去掉 kindle 源仓库自带的 .git 等无关文件
 rm -rf "$STAGE/app/web/dist/xread/.git" "$STAGE/app/kindle/.git" \
-       "$STAGE/app/kindle/out" "$STAGE/app/web/dist/xread/out"
+       "$STAGE/app/kindle/out" "$STAGE/app/web/dist/xread/out" \
+       "$STAGE/app/kindle/diagnose.html" "$STAGE/app/web/dist/xread/diagnose.html"
 # BUILD_INFO（溯源）
 if [ "$FETCH_BACKEND" = 1 ]; then
     BACKEND_SRC="xread@backend-latest Release (SHA256 verified)"
@@ -232,6 +238,30 @@ mkdir -p "$OUT_DIR"
 DEST="$OUT_DIR/xread-native-${VERSION}.fpk"
 cp "$FPK" "$DEST"
 echo
-echo "========== 完成 =========="
+echo "========== FPK 完成 =========="
 echo "产物: $DEST ($(du -h "$DEST" | cut -f1))"
+
+# ---------- 8. WSL2 部署包（与 FPK 同源，默认同时产出）----------
+# 复用同一批原料：backend/ 二进制 + frontend-dist/ 前端 + KINDLE_SRC Kindle 前端。
+# 约定：后续每次新版本更新，同时给出 .fpk 与 wsl2 .tar.gz 两个包。
+WSL2_SCRIPT="$ROOT/scripts/build-wsl2-package.sh"
+if [ "${SKIP_WSL2:-0}" = 1 ]; then
+    log "SKIP_WSL2=1：跳过 WSL2 包"
+elif [ ! -f "$WSL2_SCRIPT" ]; then
+    echo "警告：缺少 $WSL2_SCRIPT，跳过 WSL2 包" >&2
+else
+    log "构建 WSL2 部署包（与 FPK 同源）"
+    BIN_DIR="$ROOT/backend" \
+    WEB_DIST="$ROOT/frontend-dist" \
+    KINDLE_SRC_REAL="$KINDLE_SRC" \
+    KINDLE_DIR="$KINDLE_SRC" \
+    VERSION="$VERSION" \
+    WSL2_OUT="$OUT_DIR/xread-wsl2-${VERSION}.tar.gz" \
+      bash "$WSL2_SCRIPT" || die "WSL2 包构建失败"
+fi
+
+echo
+echo "========== 完成 =========="
+echo "FPK  : $DEST ($(du -h "$DEST" | cut -f1))"
+[ "${SKIP_WSL2:-0}" = 1 ] || echo "WSL2 : $OUT_DIR/xread-wsl2-${VERSION}.tar.gz ($(du -h "$OUT_DIR/xread-wsl2-${VERSION}.tar.gz" 2>/dev/null | cut -f1))"
 echo "源码: xread@${XREAD_COMMIT:0:12} + xread-kindle@${KINDLE_COMMIT:0:12}"

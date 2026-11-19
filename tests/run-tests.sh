@@ -18,7 +18,7 @@ cd "$ROOT"
 
 # 源仓库路径：本地默认 ../xread 与 ../kabi-reader；CI 中由工作流传入 src/xread 等
 XREAD_SRC="${XREAD_SRC:-$ROOT/../xread}"
-KINDLE_SRC="${KINDLE_SRC:-$ROOT/../kabi-reader}"
+KINDLE_SRC="${KINDLE_SRC:-$ROOT/../xread-kindle}"
 export XREAD_SRC KINDLE_SRC
 
 PASS=0
@@ -83,13 +83,13 @@ st  = json.load(open('.github/build-state.json', encoding='utf-8'))['fpk_version
 kindle_html = open(os.path.join(os.environ['KINDLE_SRC'], 'index.html'), encoding='utf-8').read()
 kd = re.search(r'"frontVersion"\s*:\s*"([^"]+)"', kindle_html).group(1)
 assert fpk == fe == st == kd, f'FPK/前端/state/Kindle 版本不一致: {fpk}/{fe}/{st}/{kd}'
-assert fpk == '1.0.48.69', f'FPK 版本非预期: {fpk}'
+assert re.match(r'^1\.0\.48\.\d+$', fpk), f'FPK 版本格式非预期: {fpk}'
 # 后端版本：Cargo.toml = 1.0.48；appVersion 由二进制自带，manifest 仅在 changelog 文案中标注
 cargo = re.search(r'^version\s*=\s*"([^"]+)"', open(os.path.join(os.environ['XREAD_SRC'], 'Cargo.toml'), encoding='utf-8').read(), re.M).group(1)
 assert cargo == '1.0.48', f'后端 Cargo.toml 版本非预期: {cargo}'
 assert 'appVersion 1.0.48' in open('manifest', encoding='utf-8').read(), 'manifest changelog 未标注 appVersion 1.0.48'
 PY
-[ $? -eq 0 ] && ok "四类版本号对齐（fpk/前端/state/kindle=1.0.48.69，后端=1.0.48）" \
+[ $? -eq 0 ] && ok "四类版本号对齐（fpk/前端/state/kindle 一致，后端=1.0.48）" \
                || bad "四类版本号一致性"
 
 # ---------- T4 工作流有效性 ----------

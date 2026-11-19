@@ -27,7 +27,7 @@
 | Kindle（老 WebKit 浏览器） | XRead-kindle 静态前端 | `http://<NAS>:7777/xread/` | 同源 `/reader3/*`，**免 CORS** |
 
 > Kindle 老浏览器访问 `/xread/`（末尾斜杠建议保留），页面自动以同源方式回源后端 API，
-> 无需手填 IP:端口。详见 [KINDLE.md](KINDLE.md)。
+> 无需手填 IP:端口。详见 [Kindle 支持专文](docs/kindle/README.md)。
 
 ---
 
@@ -82,8 +82,11 @@ xread-fpk/
 ├── frontend-dist/            # 【生成，不入库】Vue3 前端编译产物（可缓存复用）
 ├── dist/                     # 【生成，不入库】最终 .fpk 产物
 ├── README.md                 # 本文档：应用说明 + 打包工程手册
-├── KINDLE.md                 # Kindle 支持专文
-└── 验证报告.md               # 本地端到端验证记录
+├── docs/                     # 说明文档归档（见下方文档索引）
+│   ├── README.md             # 文档中心索引
+│   ├── kindle/               # Kindle 前端专文
+│   ├── wsl2/                 # Win10 + WSL2 本地运行文档
+│   └── 验证报告.md           # 本地端到端验证记录
 ```
 
 ---
@@ -146,7 +149,7 @@ SKIP_FE=1 ./build.sh
 - 同源 API：前端 `address` 留空，运行时由 `pageOrigin()` 拼出加载页的来源（**不用 `location.origin`**，老 Kindle 无此属性），免 CORS、无需手填 IP:端口。
 - 兼容性：ES5 JavaScript、CRLF 换行、块级 / 固定 px 布局，兼容 Kindle WebKit 534；字体框、关于本机弹窗、书籍管理等按老内核特性专门适配。
 
-访问方式、部署原理、目录结构与更新方法详见 **[KINDLE.md](KINDLE.md)**。
+访问方式、部署原理、目录结构与更新方法详见 **[Kindle 支持专文](docs/kindle/README.md)**。
 
 ---
 
@@ -255,8 +258,10 @@ T6 用本地 HTTP 服务器模拟 GitHub Release，不依赖外网。退出码�
 
 ## 12. 相关文档
 
-- [KINDLE.md](KINDLE.md) — Kindle 静态前端的访问方式、部署原理与更新方法
-- [验证报告.md](验证报告.md) — 本地端到端构建与验证记录
+- [文档中心](docs/README.md) — 全部说明文档的索引
+- [Kindle 支持专文](docs/kindle/README.md) — Kindle 静态前端的访问方式、部署原理与更新方法
+- [验证报告](docs/验证报告.md) — 本地端到端构建与验证记录
+- [Win10 + WSL2 本地运行](docs/wsl2/README.md) — 部署 / 测试 / 开箱即用部署包制作
 - [xread](https://github.com/bingkuomiao/xread) / [xread-kindle](https://github.com/bingkuomiao/xread-kindle) — 两大源码基线
 
 ## 13. 状态

@@ -15,7 +15,7 @@
 #   ./build.sh --fetch-backend          # 打包前从 backend-latest Release 拉最新后端二进制
 #   ./build.sh --pull                   # 打包前对两个源码仓库执行 git pull 更新
 #   ./build.sh --pull --fetch-backend   # 前端源码 + 后端二进制都拉最新
-#   XREAD_VERSION=1.0.48.93 ./build.sh  # 指定版本（写入 manifest / 前端版本号检查 / 文件名）
+#   XREAD_VERSION=1.0.48.102 ./build.sh  # 指定版本（写入 manifest / 前端版本号检查 / 文件名）
 #   XREAD_PORT=7778 ./build.sh          # 指定服务端口
 #   XREAD_OUT=/path ./build.sh          # 指定产物输出目录
 #
@@ -34,7 +34,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 XREAD_SRC="${XREAD_SRC:-$ROOT/../xread}"
 KINDLE_SRC="${KINDLE_SRC:-$ROOT/../xread-kindle}"
-VERSION="${XREAD_VERSION:-1.0.48.93}"
+VERSION="${XREAD_VERSION:-1.0.48.102}"
 PORT="${XREAD_PORT:-7777}"
 OUT_DIR="${XREAD_OUT:-$ROOT/dist}"
 FNPACK="$ROOT/tools/fnpack"
@@ -130,14 +130,12 @@ cp "$ROOT/backend/xread-arm64" "$STAGE/app/bin/xread-arm64"
 cp -a "$ROOT/app/ui/." "$STAGE/app/ui/"
 # Vue3 前端 -> app/web/dist
 cp -a "$FE_DIST/." "$STAGE/app/web/dist/"
-# Kindle 静态前端 -> app/kindle 且挂到 web 根的 /xread 子路径
+# Kindle 静态前端 -> 只挂到 web 根的 /xread 子路径（运行时唯一挂载点）
+# 说明：不再额外复制一份到 app/kindle/。那份是构建中间态，启动脚本与后端都不引用，
+# 完整源码仍保留在 xread-kindle 仓库，删掉可省约 7MB 冗余。
 cp -a "$KINDLE_SRC/." "$STAGE/app/web/dist/xread/"
-mkdir -p "$STAGE/app/kindle"
-cp -a "$KINDLE_SRC/." "$STAGE/app/kindle/"
 # 去掉 kindle 源仓库自带的 .git 等无关文件
-rm -rf "$STAGE/app/web/dist/xread/.git" "$STAGE/app/kindle/.git" \
-       "$STAGE/app/kindle/out" "$STAGE/app/web/dist/xread/out" \
-       "$STAGE/app/kindle/diagnose.html" "$STAGE/app/web/dist/xread/diagnose.html"
+rm -rf "$STAGE/app/web/dist/xread/.git" "$STAGE/app/web/dist/xread/out"
 # BUILD_INFO（溯源）
 if [ "$FETCH_BACKEND" = 1 ]; then
     BACKEND_SRC="xread@backend-latest Release (SHA256 verified)"
@@ -192,7 +190,7 @@ required = ['manifest','ICON.PNG','ICON_256.PNG','BUILD_INFO',
             'wizard/install','wizard/config','app/ui/config',
             'app/ui/images/icon_64.png','app/ui/images/icon_256.png',
             'app/bin/xread-amd64','app/bin/xread-arm64',
-            'app/web/dist/index.html','app/kindle/index.html',
+            'app/web/dist/index.html',
             'app/web/dist/xread/index.html']
 for r in required:
     if not (stage / r).is_file():

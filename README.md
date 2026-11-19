@@ -35,12 +35,12 @@
 
 | 项 | 值 | 说明 |
 |---|---|---|
-| **FPK 应用版本 / `manifest.version`** | **1.0.48.93** | 安装包版本，同时是产物文件名 |
-| 前端版本（设置页显示） | 1.0.48.93 | 来自 `xread/frontend/package.json` |
+| **FPK 应用版本 / `manifest.version`** | **1.0.48.102** | 安装包版本，同时是产物文件名 |
+| 前端版本（设置页显示） | 1.0.48.102 | 来自 `xread/frontend/package.json` |
 | 后端 `appVersion` | 1.0.48 | 固定，后端二进制不随前端改动 |
-| Kindle 前端 `frontVersion` | 1.0.48.93 | 写入 `appVersion` / `frontVersion` 运行配置 |
+| Kindle 前端 `frontVersion` | 1.0.48.102 | 写入 `appVersion` / `frontVersion` 运行配置 |
 
-打包时 `XREAD_VERSION` 应与前端版本一致（默认已是 `1.0.48.93`）。
+打包时 `XREAD_VERSION` 应与前端版本一致（默认已是 `1.0.48.102`）。
 
 ---
 
@@ -147,7 +147,7 @@ SKIP_WSL2=1 ./build.sh
    - 壳文件：`manifest` / ICON / `cmd/` / `config/` / `wizard/`
    - 后端：`backend/xread-{amd64,arm64}` → `app/bin/`
    - Vue3 前端：`frontend-dist/` → `app/web/dist/`
-   - Kindle 前端：`xread-kindle/` → `app/kindle/`，并挂到 `app/web/dist/xread/` 子路径
+   - Kindle 前端：`xread-kindle/` → 只挂到 `app/web/dist/xread/` 子路径（不额外复制 `app/kindle/`，省约 7MB）
 5. **参数注入**：版本写入 `manifest`，端口写入 `manifest` / `app/ui/config` / `cmd/main`。
 6. **校验**：文件齐全、JSON 合法、运行时配置、版本号、双架构静态 ELF、图标尺寸。
 7. **打包**：`fnpack build` → `dist/xread-native-<版本>.fpk`。
@@ -159,7 +159,7 @@ SKIP_WSL2=1 ./build.sh
 本包内置一份兼容后端 `/reader3/*` API 的**静态阅读前端 XRead-kindle**，专为 Kindle 等老 WebKit 浏览器准备，
 与 Vue 3 前端**共存于同一服务、同一端口**：
 
-- 挂载位置：构建时由 `app/kindle/` 拷贝为 `app/web/dist/xread/`，部署到运行时 `WEB_ROOT/xread/`。
+- 挂载位置：构建时由 `xread-kindle/` 直接复制到 `app/web/dist/xread/`，部署到运行时 `WEB_ROOT/xread/`（不额外保留 `app/kindle/` 副本）。
 - 访问方式：`http://<NAS>:7777/xread/`，页面全部使用相对路径，由后端静态兜底路由自动补 `index.html`。
 - 同源 API：前端 `address` 留空，运行时由 `pageOrigin()` 拼出加载页的来源（**不用 `location.origin`**，老 Kindle 无此属性），免 CORS、无需手填 IP:端口。
 - 兼容性：ES5 JavaScript、CRLF 换行、块级 / 固定 px 布局，兼容 Kindle WebKit 534；字体框、关于本机弹窗、书籍管理等按老内核特性专门适配。

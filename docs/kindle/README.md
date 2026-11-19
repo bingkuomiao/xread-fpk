@@ -1,11 +1,11 @@
 # XRead-kindle（Kindle 老浏览器前端）
 
-本工程在 `app/kindle/` 内置了一份**兼容 XRead 后端 `/reader3/*` API 的静态阅读前端**（源码基线为
+本包在 `app/web/dist/xread/` 内置了一份**兼容 XRead 后端 `/reader3/*` API 的静态阅读前端**（源码基线为
 [bingkuomiao/xread-kindle](https://github.com/bingkuomiao/xread-kindle)，由 `kabi-reader` 改造而来），
 用于 **Kindle 等老 WebKit 浏览器**访问。它由 Rust 后端以静态文件形式在 `/xread` 路径下提供，
 与手机 / PC 使用的 Vue 3 前端共存于同一服务、同一端口。
 
-> 本包前端版本 `frontVersion = 1.0.48.69`，后端 `appVersion = 1.0.48`。
+> 本包前端版本 `frontVersion = 1.0.48.102`，后端 `appVersion = 1.0.48`。
 
 ## 访问方式
 
@@ -32,14 +32,14 @@
 
 ## 构建流程
 
-`build.sh` 在打包时把 xread-kindle 源码整体拷贝两处：
+`build.sh` 在打包时把 xread-kindle 源码复制到 Web 根的 /xread 子路径（运行时唯一挂载点）：
 
 ```bash
-# 1) 挂到 Web 根的 /xread 子路径（运行时由后端静态兜底路由提供）
+# 挂到 Web 根的 /xread 子路径（运行时由后端静态兜底路由提供）
 cp -a "$KINDLE_SRC/." "$STAGE/app/web/dist/xread/"
-# 2) 保留一份源码层副本
-cp -a "$KINDLE_SRC/." "$STAGE/app/kindle/"
 ```
+
+不再额外复制 `app/kindle/`：那份是构建中间态，启动脚本与后端都不引用，完整源码仍在 xread-kindle 仓库。
 
 因此源码基线中的任何改动（HTML / JS / CSS / 图片 / 字体 / 文档）都会随 `.fpk` 进入安装包，
 最终部署到运行时的 `WEB_ROOT/xread/`。
@@ -47,7 +47,7 @@ cp -a "$KINDLE_SRC/." "$STAGE/app/kindle/"
 ## 目录（打包入包后）
 
 ```
-app/kindle/                (= app/web/dist/xread/)
+app/web/dist/xread/        (运行时 /xread 路径)
 ├── index.html             入口（相对路径引用资源，含 __XREAD_CONFIG__ 运行配置）
 ├── js/
 │   ├── config.js          address 留空 = 同源自适应

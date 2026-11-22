@@ -1,7 +1,7 @@
 {
-  "xread_sha": "9c50164aa2cdd366cf68c379a05a9a3781f6618a",
-  "kindle_sha": "ba165c26e32e0dee2c1b248b6add4b828e031032",
-  "fpk_version": "1.0.48.102",
-  "fe_version": "1.0.48.102",
-  "built_at": "2026-11-19T00:22:37Z"
+  "xread_sha": "c2b23a031e258c487479557cdb3b2b21bfae162c",
+  "kindle_sha": "cec356d8ddee26cda66b15ee948e8962984e8b82",
+  "fpk_version": "1.0.48.151",
+  "fe_version": "1.0.48.151",
+  "built_at": "2026-11-22T12:11:40Z"
 }

@@ -68,9 +68,9 @@ fi
 
 # ---------- 0. 前置检查 ----------
 log "检查源码与工具"
-[ -d "$XREAD_SRC/frontend/src" ]    || die "找不到 xread 前端源码: $XREAD_SRC/frontend/src"
+[ -d "$XREAD_SRC/frontend/src" ]    || die "找不到 XRead 前端源码: $XREAD_SRC/frontend/src"
 [ -f "$XREAD_SRC/frontend/package.json" ] || die "找不到 $XREAD_SRC/frontend/package.json"
-[ -f "$KINDLE_SRC/index.html" ]      || die "找不到 xread-kindle 前端: $KINDLE_SRC/index.html"
+[ -f "$KINDLE_SRC/index.html" ]      || die "找不到 XRead-kindle 前端: $KINDLE_SRC/index.html"
 [ -f "$ROOT/backend/xread-amd64" ]   || die "缺少后端二进制基线: backend/xread-amd64"
 [ -f "$ROOT/backend/xread-arm64" ]   || die "缺少后端二进制基线: backend/xread-arm64"
 [ -x "$FNPACK" ]                     || die "缺少打包器: tools/fnpack"
@@ -88,19 +88,19 @@ KINDLE_COMMIT="$(git -C "$KINDLE_SRC" rev-parse HEAD 2>/dev/null || echo unknown
 log "xread      @ ${XREAD_COMMIT:0:12}"
 log "xread-kindle @ ${KINDLE_COMMIT:0:12}"
 
-# ---------- 1. 编译 xread Vue3 前端 ----------
+# ---------- 1. 编译 XRead Vue3 前端 ----------
 FE_DIST="$ROOT/frontend-dist"
 if [ "$SKIP_FE" = 1 ] && [ -f "$FE_DIST/index.html" ]; then
     log "SKIP_FE=1：复用已有前端产物 $FE_DIST"
 else
-    log "编译 xread Vue3 前端"
+    log "编译 XRead Vue3 前端"
     [ -d "$XREAD_SRC/frontend/node_modules" ] || {
         log "node_modules 缺失，npm install"
         ( cd "$XREAD_SRC/frontend" && npm install )
     }
     # 前端版本号由 package.json 注入 __APP_VERSION__；打包版本必须与之一致。
     FE_VER="$(python3 -c "import json;print(json.load(open('$XREAD_SRC/frontend/package.json'))['version'])")"
-    [ "$FE_VER" = "$VERSION" ] || die "版本不一致：xread 前端 package.json=$FE_VER，请求打包版本=$VERSION（请同步两者）"
+    [ "$FE_VER" = "$VERSION" ] || die "版本不一致：XRead 前端 package.json=$FE_VER，请求打包版本=$VERSION（请同步两者）"
     ( cd "$XREAD_SRC/frontend" && npm run build )
     [ -f "$XREAD_SRC/frontend/dist/index.html" ] || die "前端构建未产出 index.html"
     rm -rf "$FE_DIST"

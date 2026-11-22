@@ -1,7 +1,7 @@
 appname                    = xread
-version                    = 1.0.48.102
+version                    = 1.0.48.151
 display_name               = 阅读
-desc                       = 阅读（英文名 XRead）是自托管阅读应用（Rust + Vue 3），离线安装、无需 Docker。兼容 Legado 书源，支持多用户隔离、TXT/EPUB 导入、AI 助读与音视频流代理；内置 XRead-kindle 静态前端，Kindle 老浏览器经 /xread/ 同源访问，手机/PC 与 Kindle 三端共用一套服务。
+desc                       = 阅读是一款自托管阅读应用，离线安装、无需 Docker。兼容 Legado 书源，支持多用户隔离，涵盖 TXT/EPUB 导入、AI 助读与音视频流代理。内置 XRead-kindle 静态前端：Kindle 老浏览器经 /xread/ 同源访问，手机、PC 与 Kindle 三端共用一套服务。
 platform                   = all
 source                     = thirdparty
 maintainer                 = Charmillionaire
@@ -14,4 +14,4 @@ ctl_stop                   = true
 desktop_uidir              = ui
 desktop_applaunchname      = xread.Application
 disable_authorization_path = true
-changelog                  = v1.0.48.102：书籍文本统一清洗——书源常把 HTML 标签混进作者/简介等字段（无限小说把「作者+字数+时间」连同字体图标塞进 author 显示成源码），新增统一清洗工具，在所有数据入口（搜索/发现/书架 API、SSE 流、最近阅读本地存储、WebDAV 备份恢复）清洗一次，下游全链路拿到干净文本，展示层不再逐点补刀；清洗只处理展示文本字段，不碰 URL 与标识字段。切换书源/书籍卡片改为与阅读面板同色（背景 theme.popup、文字 theme.fontColor，兼容老内核），暗色主题下详情清晰可读。fpk 精简：Kindle 静态前端只保留 web/dist/xread/ 单一挂载点，移除重复 app/kindle/ 副本，包体约 32MB 降至 25MB。保留 WSL2 双包、搜索默认书源与发现页统一、分类前缀剥离、配置字体区样式等此前改进。由 xread（Rust 后端 + Vue3 前端）与 xread-kindle 最新产物统一打包，后端为已验证静态构建（appVersion 1.0.48），前端版本 1.0.48.102，向导可配置批量缓存并发与书源测试超时（默认 120s）。
+changelog                  = v1.0.48.151：同步 XRead 前端 1.0.48.151 与 Kindle 前端 v140 最新产物。前端：书架快照首屏与加入书架并行批量写回、阅读页尾页码开关与本地缓存秒开、首屏加载提速（用户信息并行去重 + 发现页书列缓存持久化）、阅读器交互优化与缓存后台化、书源管理交互优化与 WebDAV 备份按修改时间倒序。此前累积改进一并保留：书籍文本统一清洗（搜索/发现/书架 API、SSE 流、最近阅读、WebDAV 备份恢复）、切换书源与书籍卡片同色、fpk 精简（Kindle 静态前端仅保留 web/dist/xread/ 单一挂载点，包体降至约 25MB）、WSL2 双包、搜索默认书源与发现页统一、分类前缀剥离。由 XRead（Rust 后端 + Vue3 前端）与 XRead-kindle 最新产物统一打包，后端为已验证静态构建（appVersion 1.0.48），前端版本 1.0.48.151，向导可配置批量缓存并发与书源测试超时（默认 120s）。
